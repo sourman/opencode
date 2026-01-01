@@ -2657,43 +2657,48 @@ export namespace Server {
         },
       )
       .all("/*", async (c) => {
-        const path = c.req.path
-        const response = await proxy(`https://app.opencode.ai${path}`, {
+        const response = await proxy(`https://app.opencode.ai${c.req.path}`, {
           ...c.req,
           headers: {
             host: "app.opencode.ai",
           },
         })
-        // Cloudflare doesn't return Content-Type for static assets, so we need to add it
-        const mimeTypes: Record<string, string> = {
-          ".js": "application/javascript",
-          ".mjs": "application/javascript",
-          ".css": "text/css",
-          ".json": "application/json",
-          ".wasm": "application/wasm",
-          ".svg": "image/svg+xml",
-          ".png": "image/png",
-          ".jpg": "image/jpeg",
-          ".jpeg": "image/jpeg",
-          ".gif": "image/gif",
-          ".ico": "image/x-icon",
-          ".webp": "image/webp",
-          ".woff": "font/woff",
-          ".woff2": "font/woff2",
-          ".ttf": "font/ttf",
-          ".eot": "application/vnd.ms-fontobject",
-        }
-        for (const [ext, mime] of Object.entries(mimeTypes)) {
-          if (path.endsWith(ext)) {
-            const headers = new Headers(response.headers)
-            headers.set("Content-Type", mime)
+
+        // Fix MIME types for static assets when Cloudflare fails to set them
+        const path = c.req.path.toLowerCase()
+        const contentType = response.headers.get("content-type")
+        
+        // Only fix if Content-Type is missing or empty
+        if (!contentType || contentType === "") {
+          let correctMimeType: string | null = null
+          
+          if (path.endsWith(".js") || path.endsWith(".mjs")) {
+            correctMimeType = "application/javascript"
+          } else if (path.endsWith(".css")) {
+            correctMimeType = "text/css"
+          } else if (path.endsWith(".json")) {
+            correctMimeType = "application/json"
+          } else if (path.endsWith(".svg")) {
+            correctMimeType = "image/svg+xml"
+          } else if (path.endsWith(".woff")) {
+            correctMimeType = "font/woff"
+          } else if (path.endsWith(".woff2")) {
+            correctMimeType = "font/woff2"
+          }
+          
+          if (correctMimeType) {
+            // Create a new response with the correct Content-Type header
+            const newHeaders = new Headers(response.headers)
+            newHeaders.set("content-type", correctMimeType)
+            
             return new Response(response.body, {
               status: response.status,
               statusText: response.statusText,
-              headers,
+              headers: newHeaders,
             })
           }
         }
+        
         return response
       }),
   )
