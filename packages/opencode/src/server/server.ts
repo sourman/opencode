@@ -2657,12 +2657,49 @@ export namespace Server {
         },
       )
       .all("/*", async (c) => {
-        return proxy(`https://app.opencode.ai${c.req.path}`, {
+        const response = await proxy(`https://app.opencode.ai${c.req.path}`, {
           ...c.req,
           headers: {
             host: "app.opencode.ai",
           },
         })
+
+        // Fix MIME types for static assets when Cloudflare fails to set them
+        const path = c.req.path.toLowerCase()
+        const contentType = response.headers.get("content-type")
+        
+        // Only fix if Content-Type is missing or empty
+        if (!contentType || contentType === "") {
+          let correctMimeType: string | null = null
+          
+          if (path.endsWith(".js") || path.endsWith(".mjs")) {
+            correctMimeType = "application/javascript"
+          } else if (path.endsWith(".css")) {
+            correctMimeType = "text/css"
+          } else if (path.endsWith(".json")) {
+            correctMimeType = "application/json"
+          } else if (path.endsWith(".svg")) {
+            correctMimeType = "image/svg+xml"
+          } else if (path.endsWith(".woff")) {
+            correctMimeType = "font/woff"
+          } else if (path.endsWith(".woff2")) {
+            correctMimeType = "font/woff2"
+          }
+          
+          if (correctMimeType) {
+            // Create a new response with the correct Content-Type header
+            const newHeaders = new Headers(response.headers)
+            newHeaders.set("content-type", correctMimeType)
+            
+            return new Response(response.body, {
+              status: response.status,
+              statusText: response.statusText,
+              headers: newHeaders,
+            })
+          }
+        }
+        
+        return response
       }),
   )
 
